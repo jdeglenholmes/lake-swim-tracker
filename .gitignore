@@ -1,0 +1,11 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Environment files
+.env
+
+# Python virtual environments & cache
+lake-swim-tracker-venv/
+venv/
+__pycache__/
+*.pyc
