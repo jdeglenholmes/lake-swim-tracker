@@ -122,8 +122,12 @@ with st.form("log_swim", clear_on_submit=True):
 # 6. PROGRESS TRACKING
 # ==========================================
 st.subheader("Your Tracker")
-data = supabase.table("lake_swims").select("*").eq("swimmer", st.session_state["swimmer"]).execute().data
-df = pd.DataFrame(data)
+try:
+    data = supabase.table("lake_swims").select("*").eq("swimmer", st.session_state["swimmer"]).execute().data
+    df = pd.DataFrame(data)
+except Exception as e:
+    st.error(f"Supabase API Error Details: {e}")
+    data = []
 
 if view_mode == "Total Progress":
     total_m = df["total_metres"].sum() if not df.empty else 0
