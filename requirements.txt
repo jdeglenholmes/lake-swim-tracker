@@ -2,3 +2,5 @@ streamlit
 pandas
 supabase
 requests
+matplotlib
+svgpath2mpl

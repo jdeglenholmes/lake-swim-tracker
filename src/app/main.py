@@ -3,6 +3,12 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
 
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+from svgpath2mpl import parse_path
+import io
+
 # ==========================================
 # 1. AUTHENTICATION GATEWAY
 # ==========================================
@@ -53,37 +59,59 @@ LAKES = load_lakes_from_db()
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
-def render_lake_svg(lake_name, current_m, target_m):
+def render_lake_image(lake_name, current_m, target_m):
     lake_info = LAKES.get(lake_name, {"path": "M 0 0 L 100 100 Z"})
-    path_d = lake_info["path"]
+    path_str = lake_info["path"]
     pct = min(current_m / target_m, 1.0)
     
-    if pct >= 1.0:
-        svg = f'''
-        <svg viewBox="0 0 100 100" width="140" height="140" style="display: block; margin: auto;">
-            <path d="{path_d}" fill="#0ea5e9" stroke="#0284c7" stroke-width="2"/>
-            <text x="50" y="52" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="sans-serif" font-size="14" font-weight="bold">DONE</text>
-        </svg>
-        '''
-    else:
-        dash_count = 20
-        completed_dashes = int(pct * dash_count)
-        blue_dash_array = ("4 1 " * completed_dashes) + "0 100"
+    # Create matplotlib figure
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.set_aspect('equal')
+    ax.axis('off')
+    
+    try:
+        # Parse the SVG d-string into a Matplotlib path
+        mpl_path = parse_path(path_str)
         
-        svg = f'''
-        <svg viewBox="0 0 100 100" width="140" height="140" style="display: block; margin: auto;">
-            <path d="{path_d}" fill="none" stroke="#e2e8f0" stroke-width="3" pathLength="100" stroke-dasharray="4 1" />
-            <path d="{path_d}" fill="none" stroke="#0ea5e9" stroke-width="3" pathLength="100" stroke-dasharray="{blue_dash_array}" />
-        </svg>
-        '''
+        # Background/uncompleted outline layer
+        patch_bg = PathPatch(mpl_path, facecolor='none', edgecolor='#e2e8f0', lw=3, ls='--')
+        ax.add_patch(patch_bg)
         
-    return f'''
-    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; margin-bottom: 15px;">
-        {svg}
-        <span style="font-family: sans-serif; font-size: 15px; font-weight: 600; margin-top: 10px; color: #1e293b;">{lake_name}</span>
-        <span style="font-family: sans-serif; font-size: 13px; color: #64748b; margin-top: 2px;">{current_m:,} / {target_m:,}m</span>
-    </div>
-    '''
+        if pct >= 1.0:
+            # Fully completed fill
+            patch_fill = PathPatch(mpl_path, facecolor='#0ea5e9', edgecolor='#0284c7', lw=2)
+            ax.add_patch(patch_fill)
+            ax.text(50, 50, "DONE", color="white", fontweight="bold", fontsize=14, ha='center', va='center', transform=ax.transAxes)
+        else:
+            # Partial fill or outline view
+            patch_fill = PathPatch(mpl_path, facecolor='#0ea5e9', alpha=0.3, edgecolor='#0ea5e9', lw=2)
+            ax.add_patch(patch_fill)
+            
+        # Autoscale limits based on path vertices
+        vertices = mpl_path.vertices
+        if len(vertices) > 0:
+            min_x, min_y = vertices.min(axis=0)
+            max_x, max_y = vertices.max(axis=0)
+            padding_x = (max_x - min_x) * 0.15 if max_x != min_x else 1
+            padding_y = (max_y - min_y) * 0.15 if max_y != min_y else 1
+            ax.set_xlim(min_x - padding_x, max_x + padding_x)
+            ax.set_ylim(max_y + padding_y, min_y - padding_y) # Inverted for screen coordinate SVG space
+            
+    except Exception as e:
+        ax.text(0.5, 0.5, f"Rendering Error", ha='center', va='center', transform=ax.transAxes)
+
+    plt.tight_layout()
+    
+    # Save figure to an in-memory byte buffer
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", transparent=True, bbox_inches='tight', dpi=150)
+    buf.seek(0)
+    plt.close(fig)
+    
+    # Render natively in Streamlit
+    st.image(buf, use_container_width=True)
+    st.markdown(f"<div style='text-align: center; font-family: sans-serif; font-weight: 600; font-size: 15px; color: #1e293b;'>{lake_name}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; font-family: sans-serif; font-size: 13px; color: #64748b; margin-bottom: 20px;'>{current_m:,} / {target_m:,}m</div>", unsafe_allow_html=True)
 
 # ==========================================
 # 4. MAIN UI HEADER
@@ -148,7 +176,7 @@ if view_mode == "Total Progress":
     st.progress(pct_overall)
     if pct_overall >= 1.0:
         st.caption(f"🎉 You have conquered {target_lake_overall}!")
-
+        
 elif view_mode == "Group by Lake":
     if not df.empty:
         totals_by_lake = df.groupby("target_lake")["total_metres"].sum().to_dict()
@@ -159,10 +187,8 @@ elif view_mode == "Group by Lake":
     for idx, (lake_name, lake_data) in enumerate(LAKES.items()):
         current_m = totals_by_lake.get(lake_name, 0)
         
-        # Ensure unsafe_allow_html=True is present here
         with lake_cols[idx % 2]:
-            svg_html = render_lake_svg(lake_name, current_m, lake_data["length"])
-            st.markdown(svg_html, unsafe_allow_html=True)
+            render_lake_image(lake_name, current_m, lake_data["length"])
 
 # ==========================================
 # 7. MANAGE PAST SWIMS
