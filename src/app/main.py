@@ -18,7 +18,7 @@ if not st.session_state["logged_in"]:
         submitted = st.form_submit_button("Log In", use_container_width=True)
         
         if submitted:
-            if pwd == st.secrets["app_password"] and swimmer_name.strip():
+            if pwd == st.secrets["APP_PASSWORD"] and swimmer_name.strip():
                 st.session_state["logged_in"] = True
                 st.session_state["swimmer"] = swimmer_name.strip()
                 st.rerun()
