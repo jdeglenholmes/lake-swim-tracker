@@ -31,7 +31,7 @@ if not st.session_state["logged_in"]:
 import json
 
 # ==========================================
-# 2. SUPABASE INIT & CONSTANTS
+# 2. SUPABASE INIT & LAKE LOADER
 # ==========================================
 @st.cache_resource
 def init_connection():
@@ -39,9 +39,16 @@ def init_connection():
 
 supabase: Client = init_connection()
 
-# Read the lakes configuration from the external JSON file
-with open("lakes_data.json", "r") as f:
-    LAKES = json.load(f)
+@st.cache_data
+def load_lakes_from_db():
+    response = supabase.table("lakes").select("*").execute()
+    # Build the dictionary dynamically from the database rows
+    return {
+        row["name"]: {"length": row["target_metres"], "path": row["svg_path"]} 
+        for row in response.data
+    }
+
+LAKES = load_lakes_from_db()
 
 # ==========================================
 # 3. HELPER FUNCTIONS
