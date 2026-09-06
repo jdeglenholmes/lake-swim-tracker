@@ -54,14 +54,15 @@ LAKES = load_lakes_from_db()
 # 3. HELPER FUNCTIONS
 # ==========================================
 def render_lake_svg(lake_name, current_m, target_m):
-    path_d = LAKES[lake_name]["path"]
+    lake_info = LAKES.get(lake_name, {"path": "M 0 0 L 100 100 Z"})
+    path_d = lake_info["path"]
     pct = min(current_m / target_m, 1.0)
     
     if pct >= 1.0:
         svg = f'''
-        <svg viewBox="0 0 100 100" style="width: 150px; height: 150px;">
-            <path d="{path_d}" fill="#0ea5e9" stroke="#0284c7" stroke-width="1"/>
-            <text x="50" y="50" text-anchor="middle" fill="white" font-family="sans-serif" font-size="12" font-weight="bold">DONE</text>
+        <svg viewBox="0 0 100 100" width="140" height="140" style="display: block; margin: auto;">
+            <path d="{path_d}" fill="#0ea5e9" stroke="#0284c7" stroke-width="2"/>
+            <text x="50" y="52" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="sans-serif" font-size="14" font-weight="bold">DONE</text>
         </svg>
         '''
     else:
@@ -70,17 +71,17 @@ def render_lake_svg(lake_name, current_m, target_m):
         blue_dash_array = ("4 1 " * completed_dashes) + "0 100"
         
         svg = f'''
-        <svg viewBox="0 0 100 100" style="width: 150px; height: 150px;">
+        <svg viewBox="0 0 100 100" width="140" height="140" style="display: block; margin: auto;">
             <path d="{path_d}" fill="none" stroke="#e2e8f0" stroke-width="3" pathLength="100" stroke-dasharray="4 1" />
             <path d="{path_d}" fill="none" stroke="#0ea5e9" stroke-width="3" pathLength="100" stroke-dasharray="{blue_dash_array}" />
         </svg>
         '''
         
     return f'''
-    <div style="display: flex; flex-direction: column; align-items: center; margin: 10px;">
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; margin-bottom: 15px;">
         {svg}
-        <span style="font-family: sans-serif; font-size: 14px; font-weight: 500; margin-top: 8px;">{lake_name}</span>
-        <span style="font-family: sans-serif; font-size: 12px; color: #64748b;">{current_m:,} / {target_m:,}m</span>
+        <span style="font-family: sans-serif; font-size: 15px; font-weight: 600; margin-top: 10px; color: #1e293b;">{lake_name}</span>
+        <span style="font-family: sans-serif; font-size: 13px; color: #64748b; margin-top: 2px;">{current_m:,} / {target_m:,}m</span>
     </div>
     '''
 
