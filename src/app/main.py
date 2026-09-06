@@ -151,9 +151,10 @@ elif view_mode == "Group by Lake":
     for idx, (lake_name, lake_data) in enumerate(LAKES.items()):
         current_m = totals_by_lake.get(lake_name, 0)
         
+        # Ensure unsafe_allow_html=True is present here
         with lake_cols[idx % 2]:
-            st.markdown(render_lake_svg(lake_name, current_m, lake_data["length"]), unsafe_allow_html=True)
-
+            svg_html = render_lake_svg(lake_name, current_m, lake_data["length"])
+            st.markdown(svg_html, unsafe_allow_html=True)
 
 # ==========================================
 # 7. MANAGE PAST SWIMS

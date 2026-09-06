@@ -1,15 +1,15 @@
 import requests
 import time
 import json
+import os
 
-# Configuration including the 4 new lakes and their approximate lengths in metres
+# Complete configuration map of all lakes and their target lengths in metres
 LAKES_CONFIG = {
     "Windermere": 17000, 
     "Ullswater": 11800, 
-    "Derwentwater": 4600,
+    "Derwent Water": 4600,       # Updated: OSM uses a space
     "Bassenthwaite Lake": 6400, 
-    "Coniston Water": 8000, 
-    "Haweswater": 6900,
+    "Coniston Water": 8000,
     "Thirlmere": 5600,
     "Ennerdale Water": 3900,
     "Wast Water": 4800, 
@@ -29,8 +29,10 @@ def get_lake_svg_path(lake_name, max_retries=4):
     out geom;
     """
     
+    # Added 'Accept' header to prevent HTTP 406 errors
     headers = {
-        'User-Agent': 'LakeSwimTracker/1.1 (Contact: your_email@example.com)'
+        'User-Agent': 'LakeSwimTracker/1.2 (Contact: your_email@example.com)',
+        'Accept': 'application/json'
     }
     
     data = None
@@ -42,7 +44,7 @@ def get_lake_svg_path(lake_name, max_retries=4):
             if response.status_code == 200:
                 try:
                     data = response.json()
-                    break  # Success! Exit the retry loop.
+                    break  # Success
                 except requests.exceptions.JSONDecodeError:
                     return f"JSON Error. Raw response: {response.text[:100]}"
                     
@@ -104,20 +106,45 @@ def get_lake_svg_path(lake_name, max_retries=4):
     svg_path.append("Z")
     return " ".join(svg_path)
 
-
-print("Fetching lake boundaries...\n")
+# --- INCREMENTAL RECOVERY LOGIC ---
+filename = "lakes_data.json"
 lakes_output = {}
 
-for lake, length in LAKES_CONFIG.items():
-    print(f"Fetching {lake}...")
-    path_string = get_lake_svg_path(lake)
-    lakes_output[lake] = {
-        "length": length,
-        "path": path_string
-    }
-    time.sleep(3) 
+# Load existing JSON if it already exists
+if os.path.exists(filename):
+    with open(filename, "r") as f:
+        try:
+            lakes_output = json.load(f)
+            print(f"Loaded existing {filename} with {len(lakes_output)} entries.")
+        except json.JSONDecodeError:
+            print("Existing JSON was corrupted. Starting fresh.")
 
-with open("lakes_data.json", "w") as f:
-    json.dump(lakes_output, f, indent=4)
+print("Checking for missing or corrupted lake entries...\n")
+
+for lake, length in LAKES_CONFIG.items():
+    existing_entry = lakes_output.get(lake)
     
-print("\nSuccessfully saved all 10 lakes to lakes_data.json!")
+    # Check if entry is completely missing OR contains an error string in the path
+    is_missing = not existing_entry
+    has_error = existing_entry and any(err in existing_entry.get("path", "") for err in ["HTTP Error", "not found", "Error", "Failed"])
+    
+    if is_missing or has_error:
+        reason = "Missing" if is_missing else "Corrupted/Error path"
+        print(f"-> Fetching '{lake}' ({reason})...")
+        
+        path_string = get_lake_svg_path(lake)
+        
+        lakes_output[lake] = {
+            "length": length,
+            "path": path_string
+        }
+        
+        # Save incrementally after each fix
+        with open(filename, "w") as f:
+            json.dump(lakes_output, f, indent=4)
+            
+        time.sleep(3)  # Respectful delay between queries
+    else:
+        print(f"✓ Skipping '{lake}' (Already valid)")
+
+print(f"\nAll checks complete! Updated data saved to {filename}.")
