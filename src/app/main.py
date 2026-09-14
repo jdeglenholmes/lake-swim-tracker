@@ -141,16 +141,22 @@ with st.form("log_swim", clear_on_submit=True):
         target_lake = st.selectbox("Assign session to lake", list(LAKES.keys()))
         
     if st.form_submit_button("Save Entry", use_container_width=True):
-        total_m = lengths * pool_size
+        total_m = int(lengths * pool_size)
         
-        supabase.table("lake_swims").insert({
-            "swimmer": st.session_state["swimmer"],
-            "activity_datetime": str(activity_date),
-            "pool_length_m": pool_size,
-            "lengths": lengths,
-            "total_metres": total_m,
-            "target_lake": target_lake
-        }).execute()
+        try:
+            response = supabase.table("lake_swims").insert({
+                "swimmer": str(st.session_state["swimmer"]),
+                "activity_datetime": str(activity_date),
+                "pool_length_m": int(pool_size),
+                "lengths": int(lengths),
+                "total_metres": total_m,
+                "target_lake": str(target_lake)
+            }).execute()
+            
+            st.success(f"Great job! {total_m}m logged.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Supabase Insert Error: {e}")
         
         st.success(f"Great job! {total_m}m logged.")
 
@@ -230,17 +236,21 @@ if user_data:
             delete_submit = col_delete.form_submit_button("Delete", use_container_width=True)
             
             if update_submit:
-                new_total = edit_lengths * edit_pool
-                supabase.table("lake_swims").update({
-                    "activity_datetime": str(edit_date),
-                    "pool_length_m": edit_pool,
-                    "lengths": edit_lengths,
-                    "total_metres": new_total,
-                    "target_lake": edit_target_lake,
-                    "updated_at_datetime": "now()"
-                }).eq("id", selected_swim["id"]).execute()
-                st.success("Entry updated!")
-                st.rerun()
+                new_total = int(edit_lengths * edit_pool)
+                try:
+                    supabase.table("lake_swims").update({
+                        "activity_datetime": str(edit_date),
+                        "pool_length_m": int(edit_pool),
+                        "lengths": int(edit_lengths),
+                        "total_metres": new_total,
+                        "target_lake": str(edit_target_lake)
+                        # Let Supabase handle updated_at_datetime automatically via DEFAULT now()
+                    }).eq("id", selected_swim["id"]).execute()
+                    
+                    st.success("Entry updated!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Supabase Update Error: {e}")
                 
             if delete_submit:
                 supabase.table("lake_swims").delete().eq("id", selected_swim["id"]).execute()
