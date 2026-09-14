@@ -136,10 +136,6 @@ with st.form("log_swim", clear_on_submit=True):
     lengths = c1.number_input("Lengths completed", min_value=1, step=1)
     pool_size = c2.number_input("Pool length (m)", value=25, step=1)
     
-    target_lake = "Total Progress"
-    if view_mode == "Group by Lake":
-        target_lake = st.selectbox("Assign session to lake", list(LAKES.keys()))
-        
     if st.form_submit_button("Save Entry", use_container_width=True):
         total_m = int(lengths * pool_size)
         
@@ -149,16 +145,13 @@ with st.form("log_swim", clear_on_submit=True):
                 "activity_datetime": str(activity_date),
                 "pool_length_m": int(pool_size),
                 "lengths": int(lengths),
-                "total_metres": total_m,
-                "target_lake": str(target_lake)
+                "total_metres": total_m
             }).execute()
             
             st.success(f"Great job! {total_m}m logged.")
             st.rerun()
         except Exception as e:
             st.error(f"Supabase Insert Error: {e}")
-        
-        st.success(f"Great job! {total_m}m logged.")
 
 # ==========================================
 # 6. PROGRESS TRACKING
@@ -169,32 +162,45 @@ try:
     df = pd.DataFrame(data)
 except Exception as e:
     st.error(f"Supabase API Error Details: {e}")
-    data = []
+    df = pd.DataFrame()
+
+total_m_swam = df["total_metres"].sum() if not df.empty else 0
 
 if view_mode == "Total Progress":
-    total_m = df["total_metres"].sum() if not df.empty else 0
-    
     target_lake_overall = st.selectbox("Select Target Lake", list(LAKES.keys()))
     target_m_overall = LAKES[target_lake_overall]["length"]
-    pct_overall = min(total_m / target_m_overall, 1.0)
+    pct_overall = min(total_m_swam / target_m_overall, 1.0)
     
-    st.markdown(f"**Total Distance** - {total_m:,}m / {target_m_overall:,}m")
+    st.markdown(f"**Total Distance** - {total_m_swam:,}m / {target_m_overall:,}m")
     st.progress(pct_overall)
     if pct_overall >= 1.0:
         st.caption(f"🎉 You have conquered {target_lake_overall}!")
         
 elif view_mode == "Group by Lake":
-    if not df.empty:
-        totals_by_lake = df.groupby("target_lake")["total_metres"].sum().to_dict()
-    else:
-        totals_by_lake = {}
-
+    sort_order = st.radio("Fill Order", ["Smallest to Largest", "Largest to Smallest"], horizontal=True)
+    reverse_sort = True if sort_order == "Largest to Smallest" else False
+    
+    # Sort lakes dynamically based on the selected radio button
+    sorted_lakes = sorted(LAKES.items(), key=lambda x: x[1]['length'], reverse=reverse_sort)
+    
     lake_cols = st.columns(2)
-    for idx, (lake_name, lake_data) in enumerate(LAKES.items()):
-        current_m = totals_by_lake.get(lake_name, 0)
+    remaining_m = total_m_swam
+    
+    for idx, (lake_name, lake_data) in enumerate(sorted_lakes):
+        target_m = lake_data["length"]
         
+        # Allocate remaining meters to the current lake
+        if remaining_m >= target_m:
+            allocated_m = target_m
+            remaining_m -= target_m
+        elif remaining_m > 0:
+            allocated_m = remaining_m
+            remaining_m = 0
+        else:
+            allocated_m = 0
+            
         with lake_cols[idx % 2]:
-            render_lake_image(lake_name, current_m, lake_data["length"])
+            render_lake_image(lake_name, allocated_m, target_m)
 
 # ==========================================
 # 7. MANAGE PAST SWIMS
@@ -204,12 +210,12 @@ st.subheader("Manage Past Swims")
 user_data = supabase.table("lake_swims").select("*").eq("swimmer", st.session_state["swimmer"]).order("activity_datetime", desc=True).execute().data
 
 if user_data:
-    df_history = pd.DataFrame(user_data)[["activity_datetime", "lengths", "pool_length_m", "total_metres", "target_lake"]]
-    df_history.columns = ["Date", "Lengths", "Pool (m)", "Total (m)", "Target Lake"]
+    df_history = pd.DataFrame(user_data)[["activity_datetime", "lengths", "pool_length_m", "total_metres"]]
+    df_history.columns = ["Date", "Lengths", "Pool (m)", "Total (m)"]
     st.dataframe(df_history, hide_index=True, use_container_width=True)
 
     with st.expander("Edit or Delete an Entry"):
-        swim_options = {f"{row['activity_datetime']} - {row['total_metres']}m ({row['target_lake']})": row for row in user_data}
+        swim_options = {f"{row['activity_datetime']} - {row['total_metres']}m": row for row in user_data}
         selected_label = st.selectbox("Select entry to modify", list(swim_options.keys()))
         selected_swim = swim_options[selected_label]
         
@@ -220,16 +226,6 @@ if user_data:
             c1, c2 = st.columns(2)
             edit_lengths = c1.number_input("Lengths", value=selected_swim["lengths"], min_value=1)
             edit_pool = c2.number_input("Pool length (m)", value=selected_swim["pool_length_m"], min_value=1)
-            
-            # Combine the default total progress bucket with dynamic lakes
-            lake_dropdown_options = ["Total Progress"] + list(LAKES.keys())
-            
-            # Safely set the index if the user previously saved a weird target_lake name
-            default_index = 0
-            if selected_swim["target_lake"] in lake_dropdown_options:
-                default_index = lake_dropdown_options.index(selected_swim["target_lake"])
-                
-            edit_target_lake = st.selectbox("Target Lake", lake_dropdown_options, index=default_index)
             
             col_update, col_delete = st.columns(2)
             update_submit = col_update.form_submit_button("Update", type="primary", use_container_width=True)
@@ -242,9 +238,7 @@ if user_data:
                         "activity_datetime": str(edit_date),
                         "pool_length_m": int(edit_pool),
                         "lengths": int(edit_lengths),
-                        "total_metres": new_total,
-                        "target_lake": str(edit_target_lake)
-                        # Let Supabase handle updated_at_datetime automatically via DEFAULT now()
+                        "total_metres": new_total
                     }).eq("id", selected_swim["id"]).execute()
                     
                     st.success("Entry updated!")
